@@ -1975,11 +1975,15 @@ func NewDividendFromYahoo(symbol, startDate, endDate string, period Period) (Div
 // CSV - convert Dividend structure to csv string
 func (d Dividend) CSV() string {
 
+	precision := getPrecision(d.Symbol)
+
 	var buffer bytes.Buffer
 	buffer.WriteString("datetime,dividend\n")
+
 	for bar := range d.Dividend {
-		str := fmt.Sprintf("%s,%.*f\n", d.Date[bar].Format("2006-01-02 15:04"), d.Dividend[bar])
+		str := fmt.Sprintf("%s,%.*f\n", d.Date[bar].Format("2006-01-02 15:04"), precision, d.Dividend[bar])
 		buffer.WriteString(str)
 	}
+
 	return buffer.String()
 }
