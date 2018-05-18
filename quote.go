@@ -1878,3 +1878,108 @@ func getAnonFTP(addr, port string, dir string, fname string) ([]byte, error) {
 
 	return contents, nil
 }
+
+// Dividend - stucture for historical dividend data
+type Dividend struct {
+	Symbol    string      `json:"symbol"`
+	Date      []time.Time `json:"date"`
+	Dividend  []float64   `json:"dividend"`
+}
+
+// Dividend - new empty dividend struct
+func NewDividend(symbol string, bars int) Dividend {
+	return Dividend{
+		Symbol:   symbol,
+		Date:     make([]time.Time, bars),
+		Dividend: make([]float64, bars),
+	}
+}
+
+// NewDividendFromYahoo - Yahoo historical dividends for a symbol
+func NewDividendFromYahoo(symbol, startDate, endDate string, period Period) (Dividend, error) {
+
+	if period != Daily {
+		Log.Printf("Yahoo intraday data no longer supported\n")
+		return NewDividend("", 0), errors.New("Yahoo intraday data no longer supported")
+	}
+
+	from := ParseDateString(startDate)
+	to := ParseDateString(endDate)
+
+	// Get crumb
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Timeout: ClientTimeout,
+		Jar:     jar,
+	}
+
+	initReq, err := http.NewRequest("GET", "https://finance.yahoo.com", nil)
+	if err != nil {
+		return NewDividend("", 0), err
+	}
+	initReq.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux i686) Gecko/20071127 Firefox/2.0.0.11")
+	resp, _ := client.Do(initReq)
+
+	crumbReq, err := http.NewRequest("GET", "https://query1.finance.yahoo.com/v1/test/getcrumb", nil)
+	if err != nil {
+		return NewDividend("", 0), err
+	}
+	crumbReq.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux i686) Gecko/20071127 Firefox/2.0.0.11")
+	resp, _ = client.Do(crumbReq)
+
+	reader := csv.NewReader(resp.Body)
+	crumb, err := reader.Read()
+	if err != nil {
+		Log.Printf("error getting crumb for '%s'\n", symbol)
+		return NewDividend("", 0), err
+	}
+
+	url := fmt.Sprintf(
+		"https://query1.finance.yahoo.com/v7/finance/download/%s?period1=%d&period2=%d&interval=1d&events=div&crumb=%s",
+		symbol,
+		from.Unix(),
+		to.Unix(),
+		crumb[0])
+	resp, err = client.Get(url)
+	if err != nil {
+		Log.Printf("symbol '%s' not found\n", symbol)
+		return NewDividend("", 0), err
+	}
+	defer resp.Body.Close()
+
+	var csvdata [][]string
+	reader = csv.NewReader(resp.Body)
+	csvdata, err = reader.ReadAll()
+	if err != nil {
+		Log.Printf("bad data for symbol '%s'\n", symbol)
+		return NewDividend("", 0), err
+	}
+
+	numrows := len(csvdata) - 1
+	dividend := NewDividend(symbol, numrows)
+
+	for row := 1; row < len(csvdata); row++ {
+
+		// Parse row of data
+		d, _ := time.Parse("2006-01-02", csvdata[row][0])
+		v, _ := strconv.ParseFloat(csvdata[row][1], 64)
+
+		dividend.Date[row-1] = d
+		dividend.Dividend[row-1] = v
+
+	}
+
+	return dividend, nil
+}
+
+// CSV - convert Dividend structure to csv string
+func (d Dividend) CSV() string {
+
+	var buffer bytes.Buffer
+	buffer.WriteString("datetime,dividend\n")
+	for bar := range d.Dividend {
+		str := fmt.Sprintf("%s,%.*f\n", d.Date[bar].Format("2006-01-02 15:04"), d.Dividend[bar])
+		buffer.WriteString(str)
+	}
+	return buffer.String()
+}
