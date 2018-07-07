@@ -92,9 +92,20 @@ var Log *log.Logger
 // Be nice, don't get blocked
 var Delay time.Duration
 
+type yahooUrls struct {
+	FinanceBaseURL string
+	Query1BaseURL string
+}
+
+// YahooUrls - exported yahoo urls
+var YahooUrls yahooUrls
+
 func init() {
 	Log = log.New(ioutil.Discard, "quote: ", log.Ldate|log.Ltime|log.Lshortfile)
 	Delay = 100
+
+	YahooUrls.FinanceBaseURL = "https://finance.yahoo.com"
+	YahooUrls.Query1BaseURL = "https://query1.finance.yahoo.com"
 }
 
 // NewQuote - new empty Quote struct
@@ -488,14 +499,14 @@ func NewQuoteFromYahoo(symbol, startDate, endDate string, period Period, adjustQ
 		Jar:     jar,
 	}
 
-	initReq, err := http.NewRequest("GET", "https://finance.yahoo.com", nil)
+	initReq, err := http.NewRequest("GET", YahooUrls.FinanceBaseURL, nil)
 	if err != nil {
 		return NewQuote("", 0), err
 	}
 	initReq.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux i686) Gecko/20071127 Firefox/2.0.0.11")
 	resp, _ := client.Do(initReq)
 
-	crumbReq, err := http.NewRequest("GET", "https://query1.finance.yahoo.com/v1/test/getcrumb", nil)
+	crumbReq, err := http.NewRequest("GET", YahooUrls.Query1BaseURL + "/v1/test/getcrumb", nil)
 	if err != nil {
 		return NewQuote("", 0), err
 	}
@@ -513,7 +524,7 @@ func NewQuoteFromYahoo(symbol, startDate, endDate string, period Period, adjustQ
 	}
 
 	url := fmt.Sprintf(
-		"https://query1.finance.yahoo.com/v7/finance/download/%s?period1=%d&period2=%d&interval=1d&events=history&crumb=%s",
+		YahooUrls.Query1BaseURL + "/v7/finance/download/%s?period1=%d&period2=%d&interval=1d&events=history&crumb=%s",
 		symbol,
 		from.Unix(),
 		to.Unix(),
